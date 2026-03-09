@@ -1,3 +1,7 @@
+// NOTE: searchStops and findJourneys now have server-side counterparts at
+// /api/stops and /api/journeys respectively. This file retains the TypeScript
+// interfaces and the Supabase client versions (used by existing callers).
+
 import { supabase } from '@/lib/supabase';
 
 export interface GtfsStop {
@@ -61,105 +65,3 @@ export interface TransferResult {
 }
 
 export type JourneyOption = TripResult | TransferResult;
-
-export async function searchStops(query: string): Promise<GtfsStop[]> {
-  if (!query || query.length < 3) return [];
-
-  const { data, error } = await supabase
-    .from('gtfs_stops')
-    .select('stop_id, stop_name, location_type')
-    .ilike('stop_name', `%${query}%`)
-    .limit(50);
-
-  if (error) { console.error("Error searching stops:", error); return []; }
-
-  const all = data || [];
-  const trainStops = all.filter(s => {
-    const n = s.stop_name.toLowerCase();
-    return (n.includes('station') || n.includes('railway')) 
-      && !n.includes('bus stop') && !n.includes('coach stop') && !n.includes('replacement');
-  });
-
-  trainStops.sort((a, b) => {
-    const aIsParent = a.location_type === 1 ? 0 : 1;
-    const bIsParent = b.location_type === 1 ? 0 : 1;
-    if (aIsParent !== bIsParent) return aIsParent - bIsParent;
-    return a.stop_name.length - b.stop_name.length;
-  });
-
-  const seen = new Set<string>();
-  const results: GtfsStop[] = [];
-  for (const stop of trainStops) {
-    const base = stop.stop_name.toLowerCase()
-      .replace(/ railway station\s*$/i, '').replace(/ station\s*$/i, '').trim();
-    if (!seen.has(base)) { seen.add(base); results.push(stop); }
-  }
-  return results.slice(0, 10);
-}
-
-export async function findJourneys(
-  originId: string, 
-  destId: string, 
-  targetTime?: string, 
-  isArrival?: boolean,
-  targetDate?: string
-): Promise<JourneyOption[]> {
-  console.log("Searching journeys:", { originId, destId, targetTime, isArrival, targetDate });
-  
-  const [directRes, transferRes] = await Promise.allSettled([
-    supabase.rpc('find_trips_path', {
-      origin_station_id: originId, dest_station_id: destId,
-      target_time: targetTime, is_arrival: isArrival, target_date: targetDate
-    }),
-    supabase.rpc('find_trips_with_transfer', {
-      origin_station_id: originId, dest_station_id: destId,
-      target_time: targetTime, is_arrival: isArrival, target_date: targetDate
-    })
-  ]);
-
-  const journeys: JourneyOption[] = [];
-
-  if (directRes.status === 'fulfilled') {
-    if (directRes.value.error) {
-      console.error("Direct RPC Error:", directRes.value.error);
-    } else if (directRes.value.data) {
-      journeys.push(...(directRes.value.data as TripResult[]).map(t => ({ ...t, isTransfer: false as const })));
-    }
-  } else {
-    console.error("Direct RPC Rejected:", directRes.reason);
-  }
-
-  if (transferRes.status === 'fulfilled') {
-    if (transferRes.value.error) {
-      // Detailed logging for the {} error object
-      const err = transferRes.value.error;
-      console.error("Transfer RPC Error Details:", {
-        code: err.code,
-        message: err.message,
-        details: err.details,
-        hint: err.hint,
-        raw: err
-      });
-      
-      if (err.code === '57014' || err.message?.includes('timeout')) {
-        throw new Error("The network search timed out. Please ensure V10 SQL is applied in Supabase.");
-      }
-      // If it's a generic error but we have no message, throw a fallback
-      throw new Error(`The transfer search failed: ${err.message || 'Unknown error'}. Check console for details.`);
-    } else if (transferRes.value.data) {
-      journeys.push(...(transferRes.value.data as TransferResult[]).map(t => ({ ...t, isTransfer: true as const })));
-    }
-  } else {
-    console.error("Transfer RPC Rejected:", transferRes.reason);
-    throw new Error(`The transfer search request was rejected: ${transferRes.reason}`);
-  }
-
-  // Sort by arrival time. 
-  journeys.sort((a, b) => {
-    const aTime = a.isTransfer ? a.overall_arrival : a.dest_arrival;
-    const bTime = b.isTransfer ? b.overall_arrival : b.dest_arrival;
-    return isArrival ? bTime.localeCompare(aTime) : aTime.localeCompare(bTime);
-  });
-
-  return journeys;
-}

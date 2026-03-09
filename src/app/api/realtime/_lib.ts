@@ -16,7 +16,7 @@ export async function fetchRealtime(path: string): Promise<GtfsRealtimeBindings.
 
   const res = await fetch(`${BASE_URL}${path}`, {
     headers: {
-      'Ocp-Apim-Subscription-Key': API_KEY,
+      'KeyId': API_KEY,
       'Accept': 'application/x-protobuf',
     },
     cache: 'no-store',
