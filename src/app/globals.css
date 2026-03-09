@@ -1,26 +1,85 @@
 @import "tailwindcss";
 
+@theme {
+  --color-brand-blue: #003366;
+  --color-brand-blue-light: #F0F7FF;
+  --color-brand-blue-dark: #001A33;
+  
+  --color-surface: #FFFFFF;
+  --color-surface-alt: #F8FAFC;
+  
+  --color-accent: #3B82F6;
+  --color-accent-dark: #1D4ED8;
+}
+
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --background: #FFFFFF;
+  --foreground: #001A33;
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
-}
-
+/* SLEEK MODERN DESIGN - Accessible High Contrast */
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background-color: #F8FAFC;
+  color: #001A33;
+  font-family: 'Outfit', 'Inter', system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Typography Overhaul */
+h1 {
+  font-weight: 900;
+  letter-spacing: -0.04em;
+  color: #001A33;
+}
+
+h2 {
+  font-weight: 800;
+  color: #001A33;
+}
+
+/* Input Styles */
+input {
+  background-color: #FFFFFF !important;
+  color: #001A33 !important;
+  border: 2px solid #E2E8F0 !important;
+  border-radius: 1rem !important;
+  font-weight: 600 !important;
+  transition: all 0.2s ease;
+}
+
+input:focus {
+  border-color: #003366 !important;
+  box-shadow: 0 0 0 4px rgba(0, 51, 102, 0.1) !important;
+  outline: none !important;
+}
+
+/* Premium Component Styling */
+.card {
+  background: #FFFFFF;
+  border: 1px solid #E2E8F0;
+  border-radius: 1.5rem;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+}
+
+.btn-primary {
+  background-color: #003366;
+  color: #FFFFFF;
+  font-weight: 700;
+  border-radius: 1rem;
+  transition: transform 0.2s, background-color 0.2s;
+}
+
+.btn-primary:hover {
+  background-color: #001A33;
+  transform: translateY(-2px);
+}
+
+.btn-primary:active {
+  transform: translateY(0);
+}
+
+/* Focus Indicator */
+*:focus-visible {
+  outline: 3px solid #3B82F6;
+  outline-offset: 2px;
 }
