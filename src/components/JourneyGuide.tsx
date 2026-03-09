@@ -20,7 +20,7 @@ interface Step {
   intermediaries?: IntermediateStop[];
   isTransferAction?: boolean;
   tripId?: string;
-  /** The platform the user arrives on at the destination — shown on the Arrived step */
+  allStopsForLeg?: IntermediateStop[];
   destPlatform?: string;
 }
 
@@ -29,17 +29,20 @@ function buildSteps(journey: JourneyOption, fromName: string, toName: string): S
 
   if (journey.isTransfer) {
     const t = journey as TransferResult;
-    s.push({ title: 'Initial Boarding', instruction: `Find Platform ${t.leg1_platform} at ${fromName}`, detail: `Look for the "${t.leg1_headsign}" train.`, tripId: t.leg1_trip_id });
-    s.push({ title: 'The First Leg', instruction: `Ride to ${t.transfer_hub_name}`, detail: `You'll pass ${t.leg1_intermediate_stops.length} stations. Tick them off as you go.`, intermediaries: t.leg1_intermediate_stops, tripId: t.leg1_trip_id });
+    const leg1Stops = t.leg1_intermediate_stops ?? [];
+    const leg2Stops = t.leg2_intermediate_stops ?? [];
+    s.push({ title: 'Initial Boarding', instruction: `Find Platform ${t.leg1_platform} at ${fromName}`, detail: `Look for the "${t.leg1_headsign}" train.`, tripId: t.leg1_trip_id, allStopsForLeg: leg1Stops });
+    s.push({ title: 'The First Leg', instruction: `Ride to ${t.transfer_hub_name}`, detail: `You'll pass ${leg1Stops.length} stations. Tick them off as you go.`, intermediaries: leg1Stops, tripId: t.leg1_trip_id, allStopsForLeg: leg1Stops });
     s.push({ title: 'Transfer Required', instruction: `Change at ${t.transfer_hub_name}`, detail: `Leave Platform ${t.transfer_platform_from} and walk to Platform ${t.transfer_platform_to}. ~${t.transfer_walk_mins} min walk.`, isTransferAction: true });
-    s.push({ title: 'Final Boarding', instruction: `Find Platform ${t.leg2_platform}`, detail: `Look for the "${t.leg2_headsign}" train.`, tripId: t.leg2_trip_id });
-    s.push({ title: 'The Final Leg', instruction: `Heading to ${toName}`, detail: `Arriving at ${t.leg2_arrival.substring(0, 5)}. Almost there.`, intermediaries: t.leg2_intermediate_stops, tripId: t.leg2_trip_id });
+    s.push({ title: 'Final Boarding', instruction: `Find Platform ${t.leg2_platform}`, detail: `Look for the "${t.leg2_headsign}" train.`, tripId: t.leg2_trip_id, allStopsForLeg: leg2Stops });
+    s.push({ title: 'The Final Leg', instruction: `Heading to ${toName}`, detail: `Arriving at ${t.leg2_arrival.substring(0, 5)}. Almost there.`, intermediaries: leg2Stops, tripId: t.leg2_trip_id, allStopsForLeg: leg2Stops });
     // Arrival step — include the destination platform from leg2
     s.push({ title: 'Arrived', instruction: `Welcome to ${toName}`, detail: `You're arriving on Platform ${t.leg2_platform}. Head up to the main concourse and you're done!`, destPlatform: t.leg2_platform });
   } else {
     const d = journey as TripResult;
-    s.push({ title: 'Find Your Train', instruction: `Find Platform ${d.origin_platform || 'TBA'} at ${fromName}`, detail: `Look for the "${d.trip_headsign}" train departing at ${d.origin_departure.substring(0, 5)}.`, tripId: d.trip_id });
-    s.push({ title: 'The Journey', instruction: `Staying on to ${toName}`, detail: `Pass ${(d.intermediate_stops || []).length} stations. Follow the list below.`, intermediaries: d.intermediate_stops, tripId: d.trip_id });
+    const stops = d.intermediate_stops ?? [];
+    s.push({ title: 'Find Your Train', instruction: `Find Platform ${d.origin_platform || 'TBA'} at ${fromName}`, detail: `Look for the "${d.trip_headsign}" train departing at ${d.origin_departure.substring(0, 5)}.`, tripId: d.trip_id, allStopsForLeg: stops });
+    s.push({ title: 'The Journey', instruction: `Staying on to ${toName}`, detail: `Pass ${stops.length} stations. Follow the list below.`, intermediaries: stops, tripId: d.trip_id, allStopsForLeg: stops });
     // Arrival step — include the destination platform
     const destPf = d.dest_platform;
     s.push({ title: 'Arrived', instruction: `Welcome to ${toName}`, detail: destPf ? `You're arriving on Platform ${destPf}. Head up to the main concourse and you're done!` : "You've successfully completed your journey. Have a great day!", destPlatform: destPf });
@@ -141,7 +144,11 @@ export function JourneyGuide({ journey, fromName, toName }: Props) {
 
       {/* Realtime panel */}
       {step.tripId && (
-        <RealtimePanel update={updates.get(step.tripId)} vehicle={vehicles.get(step.tripId)} />
+        <RealtimePanel
+          update={updates.get(step.tripId)}
+          vehicle={vehicles.get(step.tripId)}
+          stops={step.allStopsForLeg}
+        />
       )}
 
       {/* Step card */}
