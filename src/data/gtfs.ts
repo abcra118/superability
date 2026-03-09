@@ -104,6 +104,8 @@ export async function findJourneys(
   isArrival?: boolean,
   targetDate?: string
 ): Promise<JourneyOption[]> {
+  console.log("Searching journeys:", { originId, destId, targetTime, isArrival, targetDate });
+  
   const [directRes, transferRes] = await Promise.allSettled([
     supabase.rpc('find_trips_path', {
       origin_station_id: originId, dest_station_id: destId,
@@ -123,17 +125,33 @@ export async function findJourneys(
     } else if (directRes.value.data) {
       journeys.push(...(directRes.value.data as TripResult[]).map(t => ({ ...t, isTransfer: false as const })));
     }
+  } else {
+    console.error("Direct RPC Rejected:", directRes.reason);
   }
 
   if (transferRes.status === 'fulfilled') {
     if (transferRes.value.error) {
-      console.error("Transfer RPC Error:", transferRes.value.error);
-      if (transferRes.value.error.code === '57014' || transferRes.value.error.message?.includes('timeout')) {
-        throw new Error("The network search timed out. We've pushed an optimization to fix this—please ensure V10 SQL is applied in Supabase.");
+      // Detailed logging for the {} error object
+      const err = transferRes.value.error;
+      console.error("Transfer RPC Error Details:", {
+        code: err.code,
+        message: err.message,
+        details: err.details,
+        hint: err.hint,
+        raw: err
+      });
+      
+      if (err.code === '57014' || err.message?.includes('timeout')) {
+        throw new Error("The network search timed out. Please ensure V10 SQL is applied in Supabase.");
       }
+      // If it's a generic error but we have no message, throw a fallback
+      throw new Error(`The transfer search failed: ${err.message || 'Unknown error'}. Check console for details.`);
     } else if (transferRes.value.data) {
       journeys.push(...(transferRes.value.data as TransferResult[]).map(t => ({ ...t, isTransfer: true as const })));
     }
+  } else {
+    console.error("Transfer RPC Rejected:", transferRes.reason);
+    throw new Error(`The transfer search request was rejected: ${transferRes.reason}`);
   }
 
   // Sort by arrival time. 
