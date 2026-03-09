@@ -117,17 +117,26 @@ export async function findJourneys(
 
   const journeys: JourneyOption[] = [];
 
-  if (directRes.status === 'fulfilled' && !directRes.value.error && directRes.value.data) {
-    journeys.push(...(directRes.value.data as TripResult[]).map(t => ({ ...t, isTransfer: false as const })));
+  if (directRes.status === 'fulfilled') {
+    if (directRes.value.error) {
+      console.error("Direct RPC Error:", directRes.value.error);
+    } else if (directRes.value.data) {
+      journeys.push(...(directRes.value.data as TripResult[]).map(t => ({ ...t, isTransfer: false as const })));
+    }
   }
 
-  if (transferRes.status === 'fulfilled' && !transferRes.value.error && transferRes.value.data) {
-    journeys.push(...(transferRes.value.data as TransferResult[]).map(t => ({ ...t, isTransfer: true as const })));
+  if (transferRes.status === 'fulfilled') {
+    if (transferRes.value.error) {
+      console.error("Transfer RPC Error:", transferRes.value.error);
+      if (transferRes.value.error.code === '57014' || transferRes.value.error.message?.includes('timeout')) {
+        throw new Error("The network search timed out. We've pushed an optimization to fix this—please ensure V10 SQL is applied in Supabase.");
+      }
+    } else if (transferRes.value.data) {
+      journeys.push(...(transferRes.value.data as TransferResult[]).map(t => ({ ...t, isTransfer: true as const })));
+    }
   }
 
   // Sort by arrival time. 
-  // If arrival-based search, usually we want results closest to the target time.
-  // For now, simple chronological/reverse chronological based on mode.
   journeys.sort((a, b) => {
     const aTime = a.isTransfer ? a.overall_arrival : a.dest_arrival;
     const bTime = b.isTransfer ? b.overall_arrival : b.dest_arrival;
