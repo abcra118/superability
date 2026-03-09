@@ -2,6 +2,8 @@
 
 import React, { useState, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
+import { useRealtime } from '@/hooks/useRealtime';
+import { getMaxDelaySecs, getScheduleRelationshipLabel, OCCUPANCY_LABELS, VEHICLE_STATUS_LABELS } from '@/data/realtime';
 
 interface IntermediateStop {
   name: string;
@@ -16,6 +18,7 @@ interface Step {
   detail: string;
   intermediaries?: IntermediateStop[];
   isTransferAction?: boolean;
+  tripId?: string;
 }
 
 export default function JourneyPage() {
@@ -29,11 +32,15 @@ export default function JourneyPage() {
   const to = searchParams.get('to') || 'Destination';
 
   const [steps, setSteps] = useState<Step[]>([]);
+  const [allTripIds, setAllTripIds] = useState<string[]>([]);
 
   useEffect(() => {
     const s: Step[] = [];
+    const ids: string[] = [];
 
     if (type === 'transfer') {
+      const leg1TripId = searchParams.get('leg1_trip_id') || '';
+      const leg2TripId = searchParams.get('leg2_trip_id') || '';
       const leg1Headsign = searchParams.get('leg1_headsign');
       const leg1Platform = searchParams.get('leg1_platform') || 'TBA';
       const leg1Inter = JSON.parse(searchParams.get('leg1_intermediates') || '[]');
@@ -46,61 +53,34 @@ export default function JourneyPage() {
       const leg2Inter = JSON.parse(searchParams.get('leg2_intermediates') || '[]');
       const leg2Arrival = searchParams.get('leg2_arrival');
 
-      s.push({
-        title: "Initial Boarding",
-        instruction: `Find Platform ${leg1Platform} at ${from}`,
-        detail: `Look for the "${leg1Headsign}" train. Take your time.`
-      });
-      s.push({
-        title: "The First Leg",
-        instruction: `Ride to ${hubName}`,
-        detail: `You'll pass ${leg1Inter.length} stations. Tick them off as you go.`,
-        intermediaries: leg1Inter
-      });
-      s.push({
-        title: "Transfer Required",
-        instruction: `Change at ${hubName}`,
-        detail: `Leave Platform ${transferPfFrom} and walk to Platform ${transferPfTo}. It's a ~${transferMins} min walk.`,
-        isTransferAction: true
-      });
-      s.push({
-        title: "Final Boarding",
-        instruction: `Find Platform ${leg2Platform}`,
-        detail: `Look for the "${leg2Headsign}" train. This is your final train.`
-      });
-      s.push({
-        title: "The Final Leg",
-        instruction: `Heading to ${to}`,
-        detail: `Arriving at ${leg2Arrival?.substring(0,5)}. Almost there.`,
-        intermediaries: leg2Inter
-      });
+      if (leg1TripId) ids.push(leg1TripId);
+      if (leg2TripId) ids.push(leg2TripId);
+
+      s.push({ title: "Initial Boarding", instruction: `Find Platform ${leg1Platform} at ${from}`, detail: `Look for the "${leg1Headsign}" train. Take your time.`, tripId: leg1TripId });
+      s.push({ title: "The First Leg", instruction: `Ride to ${hubName}`, detail: `You'll pass ${leg1Inter.length} stations. Tick them off as you go.`, intermediaries: leg1Inter, tripId: leg1TripId });
+      s.push({ title: "Transfer Required", instruction: `Change at ${hubName}`, detail: `Leave Platform ${transferPfFrom} and walk to Platform ${transferPfTo}. It's a ~${transferMins} min walk.`, isTransferAction: true });
+      s.push({ title: "Final Boarding", instruction: `Find Platform ${leg2Platform}`, detail: `Look for the "${leg2Headsign}" train. This is your final train.`, tripId: leg2TripId });
+      s.push({ title: "The Final Leg", instruction: `Heading to ${to}`, detail: `Arriving at ${leg2Arrival?.substring(0,5)}. Almost there.`, intermediaries: leg2Inter, tripId: leg2TripId });
     } else {
+      const tripId = searchParams.get('tripId') || '';
       const headsign = searchParams.get('headsign');
       const platform = searchParams.get('platform') || 'TBA';
       const inter = JSON.parse(searchParams.get('intermediates') || '[]');
       const depTime = searchParams.get('departure_time');
 
-      s.push({
-        title: "Find Your Train",
-        instruction: `Find Platform ${platform} at ${from}`,
-        detail: `Look for the "${headsign}" train departing at ${depTime?.substring(0,5)}.`
-      });
-      s.push({
-        title: "The Journey",
-        instruction: `Staying on to ${to}`,
-        detail: `Pass ${inter.length} stations. Follow the list below.`,
-        intermediaries: inter
-      });
+      if (tripId) ids.push(tripId);
+
+      s.push({ title: "Find Your Train", instruction: `Find Platform ${platform} at ${from}`, detail: `Look for the "${headsign}" train departing at ${depTime?.substring(0,5)}.`, tripId });
+      s.push({ title: "The Journey", instruction: `Staying on to ${to}`, detail: `Pass ${inter.length} stations. Follow the list below.`, intermediaries: inter, tripId });
     }
 
-    s.push({
-      title: "Arrived",
-      instruction: `Welcome to ${to}`,
-      detail: "You've successfully completed your journey. Have a great day!"
-    });
+    s.push({ title: "Arrived", instruction: `Welcome to ${to}`, detail: "You've successfully completed your journey. Have a great day!" });
 
     setSteps(s);
+    setAllTripIds(ids);
   }, [searchParams, from, to, type]);
+
+  const { updates, vehicles } = useRealtime(allTripIds);
 
   const toggleStop = (id: number) => {
     const newSet = new Set(completedStops);
@@ -114,9 +94,18 @@ export default function JourneyPage() {
   const step = steps[currentStep];
   const progress = ((currentStep + 1) / steps.length) * 100;
 
+  // Realtime info for current step's trip
+  const currentTripId = step.tripId;
+  const currentUpdate = currentTripId ? updates.get(currentTripId) : undefined;
+  const currentVehicle = currentTripId ? vehicles.get(currentTripId) : undefined;
+  const delaySecs = currentUpdate ? getMaxDelaySecs(currentUpdate) : 0;
+  const schedRel = currentUpdate ? getScheduleRelationshipLabel(currentUpdate?.scheduleRelationship) : null;
+  const occupancy = currentVehicle?.occupancyStatus !== undefined ? OCCUPANCY_LABELS[currentVehicle.occupancyStatus] : null;
+  const vehicleStatus = currentVehicle?.currentStatus !== undefined ? VEHICLE_STATUS_LABELS[currentVehicle.currentStatus] : null;
+
   return (
     <main className="max-w-xl mx-auto px-6 py-12 min-h-screen bg-slate-50 flex flex-col">
-      <header className="mb-12">
+      <header className="mb-8">
         <div className="flex justify-between items-center mb-6">
           <span className="text-xs font-black text-slate-400 uppercase tracking-widest">Step {currentStep + 1} of {steps.length}</span>
           <button className="text-xs font-black text-slate-500 uppercase" onClick={() => router.push('/')}>Quit</button>
@@ -126,6 +115,33 @@ export default function JourneyPage() {
           <div className="h-full bg-brand-blue transition-all duration-700 ease-out" style={{ width: `${progress}%` }}></div>
         </div>
       </header>
+
+      {/* Realtime status panel — only shows when we have live data for this step */}
+      {(schedRel === 'CANCELLED' || delaySecs > 0 || occupancy || vehicleStatus) && (
+        <div className={`mb-6 p-4 rounded-2xl border-2 flex flex-wrap gap-3 items-center ${schedRel === 'CANCELLED' ? 'bg-red-50 border-red-200' : 'bg-slate-100 border-slate-200'}`}>
+          {schedRel === 'CANCELLED' && (
+            <span className="text-xs font-black uppercase text-white bg-red-500 px-3 py-1.5 rounded-lg">⚠ Service Cancelled</span>
+          )}
+          {schedRel !== 'CANCELLED' && delaySecs >= 60 && (
+            <span className="text-xs font-black uppercase text-white bg-orange-500 px-3 py-1.5 rounded-lg">
+              +{Math.round(delaySecs / 60)} min delay
+            </span>
+          )}
+          {schedRel !== 'CANCELLED' && delaySecs < 60 && currentUpdate && (
+            <span className="text-xs font-black uppercase text-emerald-700 bg-emerald-100 px-3 py-1.5 rounded-lg">✓ On Time</span>
+          )}
+          {vehicleStatus && (
+            <span className="text-xs font-black uppercase text-slate-600 bg-white border border-slate-200 px-3 py-1.5 rounded-lg">
+              🚆 {vehicleStatus}
+            </span>
+          )}
+          {occupancy && (
+            <span className={`text-xs font-black uppercase px-3 py-1.5 rounded-lg ${occupancy.color}`}>
+              👥 {occupancy.label}
+            </span>
+          )}
+        </div>
+      )}
 
       <div className="flex-grow space-y-8">
         <div className={`p-8 rounded-[2.5rem] bg-white border-2 shadow-sm ${step.isTransferAction ? 'border-amber-200 shadow-amber-100' : 'border-slate-50 shadow-slate-100'}`}>
