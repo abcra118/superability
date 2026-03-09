@@ -1,19 +1,53 @@
 import React from 'react';
 import { ServiceAlert } from '@/data/realtime';
+import { JourneyOption, TripResult, TransferResult } from '@/data/gtfs';
+
+/** Checks whether an alert is directly relevant to the user's actual journey */
+export function isAlertRelevant(alert: ServiceAlert, journey: JourneyOption): boolean {
+  // Collect the route IDs and stop IDs of the user's own journey legs
+  const journeyRouteIds = new Set<string>();
+  const journeyTripIds  = new Set<string>();
+
+  if (journey.isTransfer) {
+    const t = journey as TransferResult;
+    if (t.leg1_route) journeyRouteIds.add(t.leg1_route);
+    if (t.leg2_route) journeyRouteIds.add(t.leg2_route);
+    if (t.leg1_trip_id) journeyTripIds.add(t.leg1_trip_id);
+    if (t.leg2_trip_id) journeyTripIds.add(t.leg2_trip_id);
+  } else {
+    const d = journey as TripResult;
+    if (d.route_long_name) journeyRouteIds.add(d.route_long_name);
+    if (d.trip_id) journeyTripIds.add(d.trip_id);
+  }
+
+  // An alert is relevant if any of its affected entities match the user's route or trip
+  return alert.affectedEntities.some(e => {
+    if (e.routeId && journeyRouteIds.has(e.routeId)) return true;
+    if (e.tripId  && journeyTripIds.has(e.tripId))   return true;
+    return false;
+  });
+}
 
 interface Props {
   alerts: ServiceAlert[];
   dismissed: Set<string>;
   onDismiss: (id: string) => void;
+  journey?: JourneyOption;
 }
 
-export function AlertBanners({ alerts, dismissed, onDismiss }: Props) {
-  const visible = alerts.filter(a => !dismissed.has(a.entityId)).slice(0, 3);
-  if (visible.length === 0) return null;
+export function AlertBanners({ alerts, dismissed, onDismiss, journey }: Props) {
+  const relevant = alerts.filter(a => {
+    if (dismissed.has(a.entityId)) return false;
+    // If we have a journey context, only show directly impacting alerts
+    if (journey) return isAlertRelevant(a, journey);
+    return true;
+  }).slice(0, 3);
+
+  if (relevant.length === 0) return null;
 
   return (
     <div className="space-y-3 mb-8" role="status" aria-live="polite">
-      {visible.map(alert => (
+      {relevant.map(alert => (
         <div key={alert.entityId} className="flex items-start gap-3 bg-amber-50 border-2 border-amber-200 text-amber-900 px-5 py-4 rounded-2xl">
           <span className="text-xl flex-shrink-0" aria-hidden>⚠️</span>
           <div className="flex-1 min-w-0">

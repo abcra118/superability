@@ -4,7 +4,7 @@ import React, { useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useJourneys } from '@/hooks/useJourneys';
 import { useRealtime } from '@/hooks/useRealtime';
-import { JourneyOption, TripResult, TransferResult } from '@/data/gtfs';
+import { JourneyOption, TripResult } from '@/data/gtfs';
 import { JourneyCard } from '@/components/JourneyCard';
 import { AlertBanners } from '@/components/AlertBanner';
 import { useJourneyStore } from '@/stores/journeyStore';
@@ -38,10 +38,7 @@ export default function ResultsPage() {
   return (
     <main className="max-w-xl mx-auto px-6 py-12 min-h-screen bg-slate-50">
       <header className="mb-10">
-        <button
-          className="mb-6 font-black text-brand-blue uppercase tracking-widest text-xs"
-          onClick={() => router.back()}
-        >
+        <button className="mb-6 font-black text-brand-blue uppercase tracking-widest text-xs" onClick={() => router.back()}>
           ← Refine Search
         </button>
         <h1 className="text-4xl font-black text-slate-900">Recommended Journeys</h1>
@@ -49,7 +46,15 @@ export default function ResultsPage() {
         {isArrival && <p className="text-xs font-black text-amber-600 uppercase mt-1 tracking-widest">Arriving By {time}</p>}
       </header>
 
-      <AlertBanners alerts={alerts} dismissed={dismissed} onDismiss={id => setDismissed(prev => new Set([...prev, id]))} />
+      {/* Alerts: only shown when journeys are loaded, filtered to the first result (most likely journey) */}
+      {!rtLoading && journeys.length > 0 && (
+        <AlertBanners
+          alerts={alerts}
+          dismissed={dismissed}
+          onDismiss={id => setDismissed(prev => new Set([...prev, id]))}
+          journey={journeys[0]}
+        />
+      )}
 
       {loading ? (
         <div className="py-20 text-center animate-pulse">

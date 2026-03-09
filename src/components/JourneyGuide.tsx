@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { JourneyOption, TripResult, TransferResult } from '@/data/gtfs';
 import { useRealtime } from '@/hooks/useRealtime';
@@ -20,6 +20,8 @@ interface Step {
   intermediaries?: IntermediateStop[];
   isTransferAction?: boolean;
   tripId?: string;
+  /** The platform the user arrives on at the destination — shown on the Arrived step */
+  destPlatform?: string;
 }
 
 function buildSteps(journey: JourneyOption, fromName: string, toName: string): Step[] {
@@ -31,14 +33,18 @@ function buildSteps(journey: JourneyOption, fromName: string, toName: string): S
     s.push({ title: 'The First Leg', instruction: `Ride to ${t.transfer_hub_name}`, detail: `You'll pass ${t.leg1_intermediate_stops.length} stations. Tick them off as you go.`, intermediaries: t.leg1_intermediate_stops, tripId: t.leg1_trip_id });
     s.push({ title: 'Transfer Required', instruction: `Change at ${t.transfer_hub_name}`, detail: `Leave Platform ${t.transfer_platform_from} and walk to Platform ${t.transfer_platform_to}. ~${t.transfer_walk_mins} min walk.`, isTransferAction: true });
     s.push({ title: 'Final Boarding', instruction: `Find Platform ${t.leg2_platform}`, detail: `Look for the "${t.leg2_headsign}" train.`, tripId: t.leg2_trip_id });
-    s.push({ title: 'The Final Leg', instruction: `Heading to ${toName}`, detail: `Arriving at ${t.leg2_arrival.substring(0, 5)}.`, intermediaries: t.leg2_intermediate_stops, tripId: t.leg2_trip_id });
+    s.push({ title: 'The Final Leg', instruction: `Heading to ${toName}`, detail: `Arriving at ${t.leg2_arrival.substring(0, 5)}. Almost there.`, intermediaries: t.leg2_intermediate_stops, tripId: t.leg2_trip_id });
+    // Arrival step — include the destination platform from leg2
+    s.push({ title: 'Arrived', instruction: `Welcome to ${toName}`, detail: `You're arriving on Platform ${t.leg2_platform}. Head up to the main concourse and you're done!`, destPlatform: t.leg2_platform });
   } else {
     const d = journey as TripResult;
     s.push({ title: 'Find Your Train', instruction: `Find Platform ${d.origin_platform || 'TBA'} at ${fromName}`, detail: `Look for the "${d.trip_headsign}" train departing at ${d.origin_departure.substring(0, 5)}.`, tripId: d.trip_id });
     s.push({ title: 'The Journey', instruction: `Staying on to ${toName}`, detail: `Pass ${(d.intermediate_stops || []).length} stations. Follow the list below.`, intermediaries: d.intermediate_stops, tripId: d.trip_id });
+    // Arrival step — include the destination platform
+    const destPf = d.dest_platform;
+    s.push({ title: 'Arrived', instruction: `Welcome to ${toName}`, detail: destPf ? `You're arriving on Platform ${destPf}. Head up to the main concourse and you're done!` : "You've successfully completed your journey. Have a great day!", destPlatform: destPf });
   }
 
-  s.push({ title: 'Arrived', instruction: `Welcome to ${toName}`, detail: "You've successfully completed your journey. Have a great day!" });
   return s;
 }
 
@@ -50,11 +56,12 @@ interface Props {
 
 export function JourneyGuide({ journey, fromName, toName }: Props) {
   const router = useRouter();
-  const [currentStep, setCurrentStep] = useState(0);
+  const [currentStep, setCurrentStep]     = useState(0);
   const [completedStops, setCompletedStops] = useState<Set<number>>(new Set());
+  const autoTickedRef = useRef<Set<number>>(new Set());
 
   const steps = buildSteps(journey, fromName, toName);
-  const step = steps[currentStep];
+  const step  = steps[currentStep];
   const progress = ((currentStep + 1) / steps.length) * 100;
 
   const allTripIds = journey.isTransfer
@@ -63,10 +70,55 @@ export function JourneyGuide({ journey, fromName, toName }: Props) {
 
   const { updates, vehicles } = useRealtime(allTripIds.filter(Boolean) as string[]);
 
-  const toggleStop = (seq: number) => {
+  // Auto-tick: when vehicle position reports currentStopSequence, mark all stops
+  // up to (but not including) that sequence as passed.
+  useEffect(() => {
+    if (!step.tripId || !step.intermediaries) return;
+    const vehicle = vehicles.get(step.tripId);
+    if (!vehicle || vehicle.currentStopSequence == null) return;
+
+    // currentStopSequence is the sequence of the stop the train is AT or heading to.
+    // Any stop with sequence < currentStopSequence has already been passed.
+    const passedSquences = step.intermediaries
+      .filter(s => s.sequence < vehicle.currentStopSequence!)
+      .map(s => s.sequence);
+
+    if (passedSquences.length === 0) return;
+
+    const alreadyAutoTicked = autoTickedRef.current;
+    const newOnes = passedSquences.filter(seq => !alreadyAutoTicked.has(seq));
+    if (newOnes.length === 0) return;
+
+    newOnes.forEach(seq => alreadyAutoTicked.add(seq));
     setCompletedStops(prev => {
       const next = new Set(prev);
-      if (next.has(seq)) next.delete(seq); else next.add(seq);
+      newOnes.forEach(seq => next.add(seq));
+      return next;
+    });
+  }, [vehicles, step.tripId, step.intermediaries]);
+
+  /**
+   * Manual tick: ticking stop N also ticks every stop before it in the list.
+   * Tapping an already-completed stop removes ONLY that stop (and those after it)
+   * so the user can correct an accidental over-tick.
+   */
+  const handleStopTick = (tappedSeq: number) => {
+    if (!step.intermediaries) return;
+
+    // Sort all stop sequences in display order
+    const seqsInOrder = step.intermediaries.map(s => s.sequence).sort((a, b) => a - b);
+    const tappedIdx   = seqsInOrder.indexOf(tappedSeq);
+
+    setCompletedStops(prev => {
+      const next = new Set(prev);
+      const alreadyDone = prev.has(tappedSeq);
+      if (alreadyDone) {
+        // Untick this stop and all after it
+        seqsInOrder.slice(tappedIdx).forEach(seq => next.delete(seq));
+      } else {
+        // Tick this stop and all before it
+        seqsInOrder.slice(0, tappedIdx + 1).forEach(seq => next.add(seq));
+      }
       return next;
     });
   };
@@ -94,11 +146,21 @@ export function JourneyGuide({ journey, fromName, toName }: Props) {
 
       {/* Step card */}
       <div className="flex-grow space-y-8">
-        <div className={`p-8 rounded-[2.5rem] bg-white border-2 shadow-sm ${step.isTransferAction ? 'border-amber-200' : 'border-slate-100'}`}>
+        <div className={`p-8 rounded-[2.5rem] bg-white border-2 shadow-sm ${step.isTransferAction ? 'border-amber-200' : step.title === 'Arrived' ? 'border-emerald-200 bg-emerald-50' : 'border-slate-100'}`}>
           <h2 className="text-3xl font-black text-slate-900 mb-4">{step.instruction}</h2>
           <p className="text-xl font-bold text-slate-500 italic border-l-4 border-brand-blue pl-6">
             {step.detail}
           </p>
+          {/* Prominent platform callout on the Arrived step */}
+          {step.destPlatform && (
+            <div className="mt-6 flex items-center gap-4 bg-brand-blue text-white rounded-2xl px-6 py-4">
+              <span className="text-3xl">🚉</span>
+              <div>
+                <p className="text-xs font-black uppercase tracking-widest opacity-70">Arriving At</p>
+                <p className="text-2xl font-black">Platform {step.destPlatform}</p>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Intermediate stops */}
@@ -111,14 +173,18 @@ export function JourneyGuide({ journey, fromName, toName }: Props) {
               {step.intermediaries.map((stop) => {
                 const done = completedStops.has(stop.sequence);
                 return (
-                  <button key={stop.sequence} className="flex items-start gap-4 w-full text-left group" onClick={() => toggleStop(stop.sequence)}>
+                  <button
+                    key={stop.sequence}
+                    className="flex items-start gap-4 w-full text-left group"
+                    onClick={() => handleStopTick(stop.sequence)}
+                  >
                     <div className={`w-8 h-8 rounded-full border-4 flex-shrink-0 flex items-center justify-center transition-all ${done ? 'bg-brand-blue border-brand-blue' : 'bg-white border-slate-300 group-hover:border-slate-400'}`}>
                       {done && <span className="text-white text-xs font-black">✓</span>}
                     </div>
                     <div>
                       <p className={`text-xl font-black ${done ? 'text-slate-300 line-through' : 'text-slate-800'}`}>{stop.name}</p>
                       <p className={`text-xs font-black uppercase tracking-wider mt-0.5 ${done ? 'text-slate-200' : 'text-brand-blue'}`}>
-                        {done ? 'Arrived' : stop.mins_to_go > 0 ? `${stop.mins_to_go}m to go` : 'Next stop'}
+                        {done ? 'Passed' : stop.mins_to_go > 0 ? `${stop.mins_to_go}m to go` : 'Next stop'}
                       </p>
                     </div>
                   </button>
