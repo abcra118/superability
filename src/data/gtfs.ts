@@ -14,7 +14,7 @@ export interface IntermediateStop {
   name: string;
   sequence: number;
   arrival: string;
-  mins_to_go: number;
+  mins_to_go: number; stop_lat: number; stop_lon: number;
 }
 
 export interface Pathway {
