@@ -3,17 +3,24 @@
 import React, { useEffect, useRef } from 'react';
 import mapboxgl from 'mapbox-gl';
 import 'mapbox-gl/dist/mapbox-gl.css';
-import { JourneyOption, IntermediateStop, TripResult, TransferResult } from '@/data/gtfs';
-import { VehiclePosition } from '@/data/realtime';
+import { JourneyOption, TripResult, TransferResult } from '@/data/gtfs';
+import { VehiclePosition, TransitMode } from '@/data/realtime';
 
 mapboxgl.accessToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN || '';
 
 interface Props {
   journey: JourneyOption;
   vehicles?: VehiclePosition[];
+  mode?: TransitMode;
 }
 
-export function JourneyMap({ journey, vehicles = [] }: Props) {
+const MODE_COLORS = {
+  metro: '#0072C6',    // Metro Blue
+  tram: '#FFCD00',     // Yarra Trams Gold/Yellow
+  metrobus: '#00A651', // PTV Bus Green
+};
+
+export function JourneyMap({ journey, vehicles = [], mode = 'metro' }: Props) {
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<mapboxgl.Map | null>(null);
   const markersRef = useRef<mapboxgl.Marker[]>([]);
@@ -32,7 +39,7 @@ export function JourneyMap({ journey, vehicles = [] }: Props) {
     mapRef.current = map;
 
     map.on('load', () => {
-      drawJourney(map, journey);
+      drawJourney(map, journey, mode);
     });
 
     return () => {
@@ -42,9 +49,9 @@ export function JourneyMap({ journey, vehicles = [] }: Props) {
 
   useEffect(() => {
     if (mapRef.current && mapRef.current.isStyleLoaded()) {
-      drawJourney(mapRef.current, journey);
+      drawJourney(mapRef.current, journey, mode);
     }
-  }, [journey]);
+  }, [journey, mode]);
 
   useEffect(() => {
     if (mapRef.current && mapRef.current.isStyleLoaded()) {
@@ -52,18 +59,16 @@ export function JourneyMap({ journey, vehicles = [] }: Props) {
     }
   }, [vehicles]);
 
-  const drawJourney = (map: mapboxgl.Map, j: JourneyOption) => {
-    // Clear existing markers
+  const drawJourney = (map: mapboxgl.Map, j: JourneyOption, activeMode: TransitMode) => {
     markersRef.current.forEach(m => m.remove());
     markersRef.current = [];
 
-    // Extract coordinates
     const stops: { lat: number; lon: number; name: string }[] = [];
     
     if (j.isTransfer) {
       const tj = j as TransferResult;
-      tj.leg1_intermediate_stops.forEach(s => stops.push({ lat: s.stop_lat, lon: s.stop_lon, name: s.name }));
-      tj.leg2_intermediate_stops.forEach(s => stops.push({ lat: s.stop_lat, lon: s.stop_lon, name: s.name }));
+      tj.leg1_intermediate_stops?.forEach(s => stops.push({ lat: s.stop_lat, lon: s.stop_lon, name: s.name }));
+      tj.leg2_intermediate_stops?.forEach(s => stops.push({ lat: s.stop_lat, lon: s.stop_lon, name: s.name }));
     } else {
       const tr = j as TripResult;
       tr.intermediate_stops?.forEach(s => stops.push({ lat: s.stop_lat, lon: s.stop_lon, name: s.name }));
@@ -72,27 +77,22 @@ export function JourneyMap({ journey, vehicles = [] }: Props) {
     if (stops.length === 0) return;
 
     const coordinates = stops.map(s => [s.lon, s.lat] as [number, number]);
+    const routeColor = MODE_COLORS[activeMode] || MODE_COLORS.metro;
 
-    // Draw route line
     if (map.getSource('route')) {
       (map.getSource('route') as mapboxgl.GeoJSONSource).setData({
         type: 'Feature',
         properties: {},
-        geometry: {
-          type: 'LineString',
-          coordinates,
-        },
+        geometry: { type: 'LineString', coordinates },
       });
+      map.setPaintProperty('route', 'line-color', routeColor);
     } else {
       map.addSource('route', {
         type: 'geojson',
         data: {
           type: 'Feature',
           properties: {},
-          geometry: {
-            type: 'LineString',
-            coordinates,
-          },
+          geometry: { type: 'LineString', coordinates },
         },
       });
 
@@ -100,26 +100,21 @@ export function JourneyMap({ journey, vehicles = [] }: Props) {
         id: 'route',
         type: 'line',
         source: 'route',
-        layout: {
-          'line-join': 'round',
-          'line-cap': 'round',
-        },
+        layout: { 'line-join': 'round', 'line-cap': 'round' },
         paint: {
-          'line-color': '#0072C6', // Metro Blue
+          'line-color': routeColor,
           'line-width': 6,
           'line-opacity': 0.8,
         },
       });
     }
 
-    // Add markers for origin, destination, and transfer
     const origin = stops[0];
     const destination = stops[stops.length - 1];
 
-    addMarker(map, origin.lon, origin.lat, '#10b981', origin.name); // Success/Origin
-    addMarker(map, destination.lon, destination.lat, '#ef4444', destination.name); // Dest
+    addMarker(map, origin.lon, origin.lat, '#10b981', origin.name); 
+    addMarker(map, destination.lon, destination.lat, '#ef4444', destination.name); 
 
-    // Fit map to bounds
     const bounds = new mapboxgl.LngLatBounds();
     coordinates.forEach(c => bounds.extend(c));
     map.fitBounds(bounds, { padding: 50, duration: 1000 });

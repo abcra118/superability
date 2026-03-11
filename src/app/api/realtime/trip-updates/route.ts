@@ -1,9 +1,11 @@
 import { NextResponse } from 'next/server';
-import { fetchRealtime } from '../_lib';
+import { TransitMode, fetchRealtime } from '../_lib';
 
-export async function GET() {
+export async function GET(req: any) {
   try {
-    const feed = await fetchRealtime('/trip-updates');
+    const { searchParams } = new URL(req.url);
+    const mode = (searchParams.get('mode') as TransitMode) || 'metro';
+    const feed = await fetchRealtime('/trip-updates', mode);
 
     // Extract relevant fields into a clean JSON structure
     const updates = feed.entity.map((e) => {

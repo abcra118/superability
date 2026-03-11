@@ -7,7 +7,7 @@ import { supabase } from '@/lib/supabase';
 export interface GtfsStop {
   stop_id: string;
   stop_name: string;
-  location_type: number;
+  location_type: number; mode?: "train" | "tram" | "bus";
 }
 
 export interface IntermediateStop {

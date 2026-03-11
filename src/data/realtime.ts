@@ -1,4 +1,5 @@
 // TypeScript interfaces and client-side fetch functions for realtime GTFS data
+export type TransitMode = 'metro' | 'tram' | 'metrobus';
 
 export interface StopTimeUpdate {
   stopSequence?: number;
@@ -53,26 +54,26 @@ export interface RealtimeData {
   timestamp: number;
 }
 
-async function fetchJson<T>(path: string): Promise<T> {
-  const res = await fetch(path, { cache: 'no-store' });
-  if (!res.ok) throw new Error(`${path}: ${res.status}`);
+async function fetchJson<T>(path: string, mode: TransitMode = 'metro'): Promise<T> {
+  const url = \`\${path}?mode=\${mode}\`;
+  const res = await fetch(url, { cache: 'no-store' });
+  if (!res.ok) throw new Error(\`\${url}: \${res.status}\`);
   return res.json();
 }
 
-export async function fetchTripUpdates(): Promise<{ updates: TripUpdate[]; timestamp: number }> {
-  return fetchJson('/api/realtime/trip-updates');
+export async function fetchTripUpdates(mode: TransitMode = 'metro'): Promise<{ updates: TripUpdate[]; timestamp: number }> {
+  return fetchJson('/api/realtime/trip-updates', mode);
 }
 
-export async function fetchServiceAlerts(): Promise<{ alerts: ServiceAlert[]; timestamp: number }> {
-  return fetchJson('/api/realtime/service-alerts');
+export async function fetchServiceAlerts(mode: TransitMode = 'metro'): Promise<{ alerts: ServiceAlert[]; timestamp: number }> {
+  return fetchJson('/api/realtime/service-alerts', mode);
 }
 
-export async function fetchVehiclePositions(): Promise<{ vehicles: VehiclePosition[]; timestamp: number }> {
-  return fetchJson('/api/realtime/vehicle-positions');
+export async function fetchVehiclePositions(mode: TransitMode = 'metro'): Promise<{ vehicles: VehiclePosition[]; timestamp: number }> {
+  return fetchJson('/api/realtime/vehicle-positions', mode);
 }
 
 // Human-readable helpers
-
 export const OCCUPANCY_LABELS: Record<number, { label: string; color: string }> = {
   0: { label: 'Empty', color: 'text-emerald-600 bg-emerald-50' },
   1: { label: 'Many Seats', color: 'text-emerald-600 bg-emerald-50' },
@@ -95,7 +96,6 @@ export function getScheduleRelationshipLabel(sr?: number): 'CANCELLED' | 'ADDED'
   return null;
 }
 
-// Get the max delay across all stop time updates for a given trip
 export function getMaxDelaySecs(update: TripUpdate): number {
   let maxDelay = 0;
   for (const stu of update.stopTimeUpdates) {

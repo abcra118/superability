@@ -8,11 +8,12 @@ import {
   fetchTripUpdates,
   fetchServiceAlerts,
   fetchVehiclePositions,
+  TransitMode,
 } from '@/data/realtime';
 
 export interface RealtimeState {
-  updates: Map<string, TripUpdate>;   // keyed by tripId
-  vehicles: Map<string, VehiclePosition>; // keyed by tripId
+  updates: Map<string, TripUpdate>;   
+  vehicles: Map<string, VehiclePosition>; 
   alerts: ServiceAlert[];
   loading: boolean;
   error: string | null;
@@ -21,11 +22,7 @@ export interface RealtimeState {
 
 const REFRESH_INTERVAL_MS = 30_000;
 
-/**
- * Fetches and periodically refreshes all three realtime feeds.
- * tripIds: the trip IDs on the results page that we want to look up.
- */
-export function useRealtime(tripIds: string[]): RealtimeState {
+export function useRealtime(tripIds: string[], mode: TransitMode = 'metro'): RealtimeState {
   const [state, setState] = useState<RealtimeState>({
     updates: new Map(),
     vehicles: new Map(),
@@ -39,9 +36,9 @@ export function useRealtime(tripIds: string[]): RealtimeState {
   async function refresh() {
     try {
       const [updatesRes, alertsRes, vehiclesRes] = await Promise.allSettled([
-        fetchTripUpdates(),
-        fetchServiceAlerts(),
-        fetchVehiclePositions(),
+        fetchTripUpdates(mode),
+        fetchServiceAlerts(mode),
+        fetchVehiclePositions(mode),
       ]);
 
       const updatesMap = new Map<string, TripUpdate>();
@@ -74,7 +71,6 @@ export function useRealtime(tripIds: string[]): RealtimeState {
   }
 
   useEffect(() => {
-    // Don't bother fetching if there are no trip IDs to look up
     if (tripIds.length === 0) {
       setState((prev) => ({ ...prev, loading: false }));
       return;
@@ -82,8 +78,7 @@ export function useRealtime(tripIds: string[]): RealtimeState {
     refresh();
     intervalRef.current = setInterval(refresh, REFRESH_INTERVAL_MS);
     return () => { if (intervalRef.current) clearInterval(intervalRef.current); };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tripIds.join(',')]);
+  }, [tripIds.join(','), mode]);
 
   return state;
 }

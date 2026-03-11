@@ -1,9 +1,11 @@
 import { NextResponse } from 'next/server';
-import { fetchRealtime } from '../_lib';
+import { TransitMode, fetchRealtime } from '../_lib';
 
-export async function GET() {
+export async function GET(req: any) {
   try {
-    const feed = await fetchRealtime('/vehicle-positions');
+    const { searchParams } = new URL(req.url);
+    const mode = (searchParams.get('mode') as TransitMode) || 'metro';
+    const feed = await fetchRealtime('/vehicle-positions', mode);
 
     const vehicles = feed.entity.map((e) => {
       const vp = e.vehicle;
@@ -14,8 +16,8 @@ export async function GET() {
         routeId: vp.trip?.routeId,
         currentStopSequence: vp.currentStopSequence,
         stopId: vp.stopId,
-        currentStatus: vp.currentStatus, // STOPPED_AT, IN_TRANSIT_TO, INCOMING_AT
-        occupancyStatus: vp.occupancyStatus, // EMPTY, MANY_SEATS_AVAILABLE, FEW_SEATS_AVAILABLE, STANDING_ROOM_ONLY, etc.
+        currentStatus: vp.currentStatus, 
+        occupancyStatus: vp.occupancyStatus,
         latitude: vp.position?.latitude ?? null,
         longitude: vp.position?.longitude ?? null,
         timestamp: vp.timestamp ? Number(vp.timestamp) * 1000 : null,

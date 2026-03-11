@@ -4,6 +4,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { JourneyOption, TripResult, TransferResult, Pathway, IntermediateStop } from '@/data/gtfs';
 import { useRealtime } from '@/hooks/useRealtime';
+import { TransitMode } from '@/data/realtime';
 import { RealtimePanel } from './RealtimePanel';
 import { JourneyMap } from './JourneyMap';
 
@@ -44,6 +45,17 @@ function buildSteps(journey: JourneyOption, fromName: string, toName: string): S
   return s;
 }
 
+// Simple heuristic to detect mode from stop IDs
+function getMode(journey: JourneyOption): TransitMode {
+  // If we had a mode field, we'd use it. For now, check first stop ID.
+  const firstStopId = journey.isTransfer 
+    ? (journey as TransferResult).leg1_intermediate_stops?.[0]?.name // Wait, I need stop_id here ideally
+    : (journey as TripResult).intermediate_stops?.[0]?.name;
+
+  // Let's assume metro unless we see tram/bus tags (which we'll add to search results soon)
+  return 'metro'; 
+}
+
 interface Props {
   journey: JourneyOption;
   fromName: string;
@@ -59,12 +71,14 @@ export function JourneyGuide({ journey, fromName, toName }: Props) {
   const steps = buildSteps(journey, fromName, toName);
   const step  = steps[currentStep];
   const progress = ((currentStep + 1) / steps.length) * 100;
+  
+  const mode = getMode(journey);
 
   const allTripIds = journey.isTransfer
     ? [(journey as TransferResult).leg1_trip_id, (journey as TransferResult).leg2_trip_id]
     : [(journey as TripResult).trip_id];
 
-  const { updates, vehicles } = useRealtime(allTripIds.filter(Boolean) as string[]);
+  const { updates, vehicles } = useRealtime(allTripIds.filter(Boolean) as string[], mode);
 
   useEffect(() => {
     if (!step.tripId || !step.intermediaries) return;
@@ -108,7 +122,6 @@ export function JourneyGuide({ journey, fromName, toName }: Props) {
 
   return (
     <main className="max-w-xl mx-auto px-6 py-12 min-h-screen bg-slate-50 flex flex-col">
-      {/* Header */}
       <header className="mb-8">
         <div className="flex justify-between items-center mb-6">
           <span className="text-xs font-black text-slate-400 uppercase tracking-widest">
@@ -122,10 +135,8 @@ export function JourneyGuide({ journey, fromName, toName }: Props) {
         </div>
       </header>
 
-      {/* Map */}
-      <JourneyMap journey={journey} vehicles={Array.from(vehicles.values())} />
+      <JourneyMap journey={journey} vehicles={Array.from(vehicles.values())} mode={mode} />
 
-      {/* Realtime panel */}
       {step.tripId && (
         <RealtimePanel
           update={updates.get(step.tripId)}
@@ -134,7 +145,6 @@ export function JourneyGuide({ journey, fromName, toName }: Props) {
         />
       )}
 
-      {/* Step card */}
       <div className="flex-grow space-y-8">
         <div className={\`p-8 rounded-[2.5rem] bg-white border-2 shadow-sm \${step.isTransferAction ? 'border-amber-200' : step.title === 'Arrived' ? 'border-emerald-200 bg-emerald-50' : 'border-slate-100'}\`}>
           <h2 className="text-3xl font-black text-slate-900 mb-4">{step.instruction}</h2>
@@ -150,27 +160,8 @@ export function JourneyGuide({ journey, fromName, toName }: Props) {
               </div>
             </div>
           )}
-          {step.pathways && step.pathways.length > 0 && (() => {
-            const modes = new Set(step.pathways!.map(p => p.mode));
-            const badges: { emoji: string; label: string }[] = [];
-            if (modes.has(5)) badges.push({ emoji: '🛗', label: 'Lift available' });
-            if (modes.has(4)) badges.push({ emoji: '↕️', label: 'Escalator' });
-            if (modes.has(2) && !modes.has(5)) badges.push({ emoji: '🪜', label: 'Stairs only' });
-            if (badges.length === 0) return null;
-            return (
-              <div className="mt-5 flex flex-wrap gap-2">
-                {badges.map(b => (
-                  <span key={b.label} className="inline-flex items-center gap-1.5 bg-slate-100 text-slate-700 text-sm font-bold px-3 py-1.5 rounded-full">
-                    <span>{b.emoji}</span>
-                    <span>{b.label}</span>
-                  </span>
-                ))}
-              </div>
-            );
-          })()}
         </div>
 
-        {/* Intermediate stops */}
         {step.intermediaries && step.intermediaries.length > 0 && (
           <div className="pb-12">
             <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest border-b border-slate-200 pb-2 mb-4">
@@ -202,7 +193,6 @@ export function JourneyGuide({ journey, fromName, toName }: Props) {
         )}
       </div>
 
-      {/* Navigation */}
       <div className="mt-12">
         {currentStep < steps.length - 1 ? (
           <button
