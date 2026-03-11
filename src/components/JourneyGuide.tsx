@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import { JourneyOption, TripResult, TransferResult } from '@/data/gtfs';
+import { JourneyOption, TripResult, TransferResult, Pathway } from '@/data/gtfs';
 import { useRealtime } from '@/hooks/useRealtime';
 import { RealtimePanel } from './RealtimePanel';
 
@@ -22,6 +22,7 @@ interface Step {
   tripId?: string;
   allStopsForLeg?: IntermediateStop[];
   destPlatform?: string;
+  pathways?: Pathway[];
 }
 
 function buildSteps(journey: JourneyOption, fromName: string, toName: string): Step[] {
@@ -41,11 +42,11 @@ function buildSteps(journey: JourneyOption, fromName: string, toName: string): S
   } else {
     const d = journey as TripResult;
     const stops = d.intermediate_stops ?? [];
-    s.push({ title: 'Find Your Train', instruction: `Find Platform ${d.origin_platform || 'TBA'} at ${fromName}`, detail: `Look for the "${d.trip_headsign}" train departing at ${d.origin_departure.substring(0, 5)}.`, tripId: d.trip_id, allStopsForLeg: stops });
+    s.push({ title: 'Find Your Train', instruction: `Find Platform ${d.origin_platform || 'TBA'} at ${fromName}`, detail: `Look for the "${d.trip_headsign}" train departing at ${d.origin_departure.substring(0, 5)}.`, tripId: d.trip_id, allStopsForLeg: stops, pathways: d.origin_pathways });
     s.push({ title: 'The Journey', instruction: `Staying on to ${toName}`, detail: `Pass ${stops.length} stations. Follow the list below.`, intermediaries: stops, tripId: d.trip_id, allStopsForLeg: stops });
     // Arrival step — include the destination platform
     const destPf = d.dest_platform;
-    s.push({ title: 'Arrived', instruction: `Welcome to ${toName}`, detail: destPf ? `You're arriving on Platform ${destPf}. Head up to the main concourse and you're done!` : "You've successfully completed your journey. Have a great day!", destPlatform: destPf });
+    s.push({ title: 'Arrived', instruction: `Welcome to ${toName}`, detail: destPf ? `You're arriving on Platform ${destPf}. Head up to the main concourse and you're done!` : "You've successfully completed your journey. Have a great day!", destPlatform: destPf, pathways: d.dest_pathways });
   }
 
   return s;
@@ -168,6 +169,25 @@ export function JourneyGuide({ journey, fromName, toName }: Props) {
               </div>
             </div>
           )}
+          {/* Accessibility badges from GTFS pathways */}
+          {step.pathways && step.pathways.length > 0 && (() => {
+            const modes = new Set(step.pathways!.map(p => p.mode));
+            const badges: { emoji: string; label: string }[] = [];
+            if (modes.has(5)) badges.push({ emoji: '🛗', label: 'Lift available' });
+            if (modes.has(4)) badges.push({ emoji: '↕️', label: 'Escalator' });
+            if (modes.has(2) && !modes.has(5)) badges.push({ emoji: '🪜', label: 'Stairs only' });
+            if (badges.length === 0) return null;
+            return (
+              <div className="mt-5 flex flex-wrap gap-2">
+                {badges.map(b => (
+                  <span key={b.label} className="inline-flex items-center gap-1.5 bg-slate-100 text-slate-700 text-sm font-bold px-3 py-1.5 rounded-full">
+                    <span>{b.emoji}</span>
+                    <span>{b.label}</span>
+                  </span>
+                ))}
+              </div>
+            );
+          })()}
         </div>
 
         {/* Intermediate stops */}
