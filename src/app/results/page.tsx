@@ -9,7 +9,7 @@ import { JourneyCard } from '@/components/JourneyCard';
 import { AlertBanners } from '@/components/AlertBanner';
 import { useJourneyStore } from '@/stores/journeyStore';
 
-export default function ResultsPage() {
+function ResultsListContent() {
   const router       = useRouter();
   const searchParams = useSearchParams();
   const from    = searchParams.get('from')     || 'Origin';
@@ -84,5 +84,17 @@ export default function ResultsPage() {
         </div>
       )}
     </main>
+  );
+}
+
+export default function ResultsPage() {
+  return (
+    <React.Suspense fallback={
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
+        <p className="text-2xl font-black text-slate-300 animate-pulse text-center">Preparing Journey Search...</p>
+      </div>
+    }>
+      <ResultsListContent />
+    </React.Suspense>
   );
 }
