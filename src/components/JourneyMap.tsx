@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import mapboxgl from 'mapbox-gl';
 import 'mapbox-gl/dist/mapbox-gl.css';
 import { JourneyOption, TripResult, TransferResult } from '@/data/gtfs';
@@ -15,9 +15,9 @@ interface Props {
 }
 
 const MODE_COLORS = {
-  metro: '#0072C6',    // Metro Blue
-  tram: '#FFCD00',     // Yarra Trams Gold/Yellow
-  metrobus: '#00A651', // PTV Bus Green
+  metro: '#0072C6',    
+  tram: '#FFCD00',     
+  metrobus: '#00A651', 
 };
 
 export function JourneyMap({ journey, vehicles = [], mode = 'metro' }: Props) {
@@ -31,7 +31,7 @@ export function JourneyMap({ journey, vehicles = [], mode = 'metro' }: Props) {
     const map = new mapboxgl.Map({
       container: mapContainerRef.current,
       style: 'mapbox://styles/mapbox/light-v11',
-      center: [144.9631, -37.8136], // Melbourne
+      center: [144.9631, -37.8136], 
       zoom: 11,
       pitch: 45,
     });
@@ -59,31 +59,58 @@ export function JourneyMap({ journey, vehicles = [], mode = 'metro' }: Props) {
     }
   }, [vehicles]);
 
-  const drawJourney = (map: mapboxgl.Map, j: JourneyOption, activeMode: TransitMode) => {
+  const drawJourney = async (map: mapboxgl.Map, j: JourneyOption, activeMode: TransitMode) => {
     markersRef.current.forEach(m => m.remove());
     markersRef.current = [];
 
-    const stops: { lat: number; lon: number; name: string }[] = [];
+    const stopPoints: { lat: number; lon: number; name: string }[] = [];
+    let shapeIds: string[] = [];
     
     if (j.isTransfer) {
       const tj = j as TransferResult;
-      tj.leg1_intermediate_stops?.forEach(s => stops.push({ lat: s.stop_lat, lon: s.stop_lon, name: s.name }));
-      tj.leg2_intermediate_stops?.forEach(s => stops.push({ lat: s.stop_lat, lon: s.stop_lon, name: s.name }));
+      tj.leg1_intermediate_stops?.forEach(s => stopPoints.push({ lat: s.stop_lat, lon: s.stop_lon, name: s.name }));
+      tj.leg2_intermediate_stops?.forEach(s => stopPoints.push({ lat: s.stop_lat, lon: s.stop_lon, name: s.name }));
+      if (tj.leg1_shape_id) shapeIds.push(tj.leg1_shape_id);
+      if (tj.leg2_shape_id) shapeIds.push(tj.leg2_shape_id);
     } else {
       const tr = j as TripResult;
-      tr.intermediate_stops?.forEach(s => stops.push({ lat: s.stop_lat, lon: s.stop_lon, name: s.name }));
+      tr.intermediate_stops?.forEach(s => stopPoints.push({ lat: s.stop_lat, lon: s.stop_lon, name: s.name }));
+      if (tr.shape_id) shapeIds.push(tr.shape_id);
     }
 
-    if (stops.length === 0) return;
+    if (stopPoints.length === 0) return;
 
-    const coordinates = stops.map(s => [s.lon, s.lat] as [number, number]);
+    let routeCoordinates: number[][] = [];
+
+    // Prioritize high-fidelity shapes if available
+    if (shapeIds.length > 0) {
+      try {
+        const shapeResults = await Promise.all(shapeIds.map(async id => {
+          const res = await fetch(\`/api/shapes/\${id}\`);
+          if (!res.ok) return null;
+          const data = await res.json();
+          return data.coordinates as number[][];
+        }));
+        
+        // Flatten non-null results
+        routeCoordinates = shapeResults.filter(Boolean).flat() as number[][];
+      } catch (err) {
+        console.error("Failed to fetch high-fidelity shapes, falling back to stops", err);
+      }
+    }
+
+    // Fallback to stop-to-stop straight lines
+    if (routeCoordinates.length === 0) {
+      routeCoordinates = stopPoints.map(s => [s.lon, s.lat]);
+    }
+
     const routeColor = MODE_COLORS[activeMode] || MODE_COLORS.metro;
 
     if (map.getSource('route')) {
       (map.getSource('route') as mapboxgl.GeoJSONSource).setData({
         type: 'Feature',
         properties: {},
-        geometry: { type: 'LineString', coordinates },
+        geometry: { type: 'LineString', coordinates: routeCoordinates },
       });
       map.setPaintProperty('route', 'line-color', routeColor);
     } else {
@@ -92,7 +119,7 @@ export function JourneyMap({ journey, vehicles = [], mode = 'metro' }: Props) {
         data: {
           type: 'Feature',
           properties: {},
-          geometry: { type: 'LineString', coordinates },
+          geometry: { type: 'LineString', coordinates: routeCoordinates },
         },
       });
 
@@ -109,14 +136,14 @@ export function JourneyMap({ journey, vehicles = [], mode = 'metro' }: Props) {
       });
     }
 
-    const origin = stops[0];
-    const destination = stops[stops.length - 1];
+    const origin = stopPoints[0];
+    const destination = stopPoints[stopPoints.length - 1];
 
     addMarker(map, origin.lon, origin.lat, '#10b981', origin.name); 
     addMarker(map, destination.lon, destination.lat, '#ef4444', destination.name); 
 
     const bounds = new mapboxgl.LngLatBounds();
-    coordinates.forEach(c => bounds.extend(c));
+    routeCoordinates.forEach(c => bounds.extend(c as [number, number]));
     map.fitBounds(bounds, { padding: 50, duration: 1000 });
   };
 

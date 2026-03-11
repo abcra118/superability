@@ -1,25 +1,24 @@
-// NOTE: searchStops and findJourneys now have server-side counterparts at
-// /api/stops and /api/journeys respectively. This file retains the TypeScript
-// interfaces and the Supabase client versions (used by existing callers).
-
-import { supabase } from '@/lib/supabase';
-
 export interface GtfsStop {
   stop_id: string;
   stop_name: string;
-  location_type: number; mode?: "train" | "tram" | "bus";
+  location_type: number;
+  mode?: "train" | "tram" | "bus";
+  stop_lat?: number;
+  stop_lon?: number;
 }
 
 export interface IntermediateStop {
   name: string;
   sequence: number;
   arrival: string;
-  mins_to_go: number; stop_lat: number; stop_lon: number;
+  mins_to_go: number;
+  stop_lat: number;
+  stop_lon: number;
 }
 
 export interface Pathway {
   mode: number;
-  text: string | null;
+  text?: string;
 }
 
 export interface TripResult {
@@ -31,17 +30,15 @@ export interface TripResult {
   origin_departure: string;
   dest_arrival: string;
   stop_count: number;
-  origin_platform?: string;
-  dest_platform?: string;
-  intermediate_stops?: IntermediateStop[];
-  origin_pathways?: Pathway[];
-  dest_pathways?: Pathway[];
-  isTransfer?: false;
+  origin_platform: string;
+  dest_platform: string;
+  intermediate_stops: IntermediateStop[];
+  origin_pathways: Pathway[];
+  dest_pathways: Pathway[];
+  shape_id?: string;
 }
 
 export interface TransferResult {
-  isTransfer: true;
-  wheelchair_accessible: number;
   leg1_trip_id: string;
   leg1_route: string;
   leg1_headsign: string;
@@ -49,6 +46,7 @@ export interface TransferResult {
   leg1_arrival: string;
   leg1_platform: string;
   leg1_intermediate_stops: IntermediateStop[];
+  leg1_shape_id?: string;
   transfer_hub_name: string;
   transfer_platform_from: string;
   transfer_platform_to: string;
@@ -61,7 +59,9 @@ export interface TransferResult {
   leg2_arrival: string;
   leg2_platform: string;
   leg2_intermediate_stops: IntermediateStop[];
+  leg2_shape_id?: string;
   overall_arrival: string;
+  wheelchair_accessible: number;
 }
 
 export type JourneyOption = TripResult | TransferResult;
