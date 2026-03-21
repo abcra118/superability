@@ -1,12 +1,15 @@
-import React from "react";
+import React, { useState } from "react";
 import { View, Text } from "react-native";
 import { useJourneyStore } from "../store/useJourneyStore";
 import { AddressAutocomplete } from "../components/search/AddressAutocomplete";
+import { TimeSelector } from "../components/search/TimeSelector";
 import { PrimaryButton } from "../components/ui/PrimaryButton";
 import { StatusBadge } from "../components/ui/StatusBadge";
 
 export const HomeScreen = () => {
   const { origin, destination, setOrigin, setDestination } = useJourneyStore();
+  const [journeyTime, setJourneyTime] = useState(new Date());
+  const [isArrival, setIsArrival] = useState(false);
 
   return (
     <View className="flex-1 px-4 py-8 bg-gray-50">
@@ -20,7 +23,7 @@ export const HomeScreen = () => {
         />
       </View>
 
-      <View className="mb-8 z-40 relative" style={{ zIndex: 40, elevation: 4 }}>
+      <View className="mb-6 z-40 relative" style={{ zIndex: 40, elevation: 4 }}>
         <AddressAutocomplete 
           placeholder="Where to?" 
           onSelect={setDestination} 
@@ -28,8 +31,20 @@ export const HomeScreen = () => {
         />
       </View>
 
-      <View className="flex-col items-center gap-4 mt-8" style={{ zIndex: 1, elevation: 1 }}>
+      <View className="relative z-30 mb-6" style={{ zIndex: 30, elevation: 3 }}>
+        <TimeSelector 
+          onChange={(date, arrival) => {
+            setJourneyTime(date);
+            setIsArrival(arrival);
+          }} 
+        />
+      </View>
+
+      <View className="flex-col items-center gap-4 mt-4" style={{ zIndex: 1, elevation: 1 }}>
         <Text className="text-sm font-semibold text-gray-500 mb-2">Dev Sandbox</Text>
+        <Text className="text-xs text-center text-gray-600 mb-4 bg-gray-200 px-3 py-1 rounded-full">
+          {isArrival ? "Arriving By:" : "Leaving At:"} {journeyTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+        </Text>
         <PrimaryButton title="Test Button" onPress={() => console.log("pressed")} />
         <PrimaryButton title="Disabled" disabled onPress={() => {}} />
         <View className="flex-row gap-2 mt-4">
