@@ -25,7 +25,7 @@ interface MapboxFeature {
   };
 }
 
-const MAPBOX_URL = "https://api.mapbox.com/search/geocode/v6/forward";
+const MAPBOX_URL = "https://api.mapbox.com/search/searchbox/v1/forward";
 const COUNTRY = "au";
 // Greater Melbourne bounding box and CBD proximity for strict localized routing
 const PROXIMITY = "144.9631,-37.8136";
@@ -75,7 +75,7 @@ export const AddressAutocomplete = ({ placeholder, onSelect, value = "" }: Addre
           return;
         }
 
-        const url = `${MAPBOX_URL}?q=${encodeURIComponent(debouncedQuery)}&country=${COUNTRY}&proximity=${PROXIMITY}&bbox=${BBOX}&access_token=${token}`;
+        const url = `${MAPBOX_URL}?q=${encodeURIComponent(debouncedQuery)}&types=poi,address&country=${COUNTRY}&proximity=${PROXIMITY}&bbox=${BBOX}&access_token=${token}`;
         
         const response = await fetch(url, { signal: abortControllerRef.current.signal });
         const data = await response.json();
