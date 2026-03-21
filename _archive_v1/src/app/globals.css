@@ -1,0 +1,28 @@
+@import "tailwindcss";
+@import "mapbox-gl/dist/mapbox-gl.css";
+
+@theme {
+  --color-brand-blue: #003366;
+  --color-brand-blue-light: #F0F7FF;
+  --color-brand-blue-dark: #001A33;
+  --color-surface: #FFFFFF;
+  --color-surface-alt: #F8FAFC;
+  --color-accent: #3B82F6;
+}
+
+:root {
+  --background: #FFFFFF;
+  --foreground: #001A33;
+}
+
+body {
+  background-color: #F8FAFC;
+  color: #001A33;
+  font-family: 'Outfit', 'Inter', system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+*:focus-visible {
+  outline: 3px solid #3B82F6;
+  outline-offset: 2px;
+}
