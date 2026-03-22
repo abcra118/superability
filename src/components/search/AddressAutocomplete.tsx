@@ -108,7 +108,7 @@ export const AddressAutocomplete = ({ placeholder, onSelect, value = "" }: Addre
 
   const handleSelect = (feature: MapboxFeature) => {
     const [lng, lat] = feature.geometry.coordinates;
-    const name = feature.properties.full_address || feature.properties.name;
+    const primary = feature.properties.name; const secondary = feature.properties.full_address; const name = (secondary && secondary !== primary) ? primary + ', ' + secondary : primary;
     
     isSelecting.current = true;
     setQuery(name);
@@ -154,15 +154,20 @@ export const AddressAutocomplete = ({ placeholder, onSelect, value = "" }: Addre
         >
           <FlatList
             data={results}
-            keyExtractor={(item) => item.id}
+            keyExtractor={(item, index) => item.id ? `${item.id}-${index}` : `item-${index}`}
             renderItem={({ item }) => (
               <TouchableOpacity
                 className="p-3 border-b border-gray-100 active:bg-gray-50"
                 onPress={() => handleSelect(item)}
               >
                 <Text className="text-base text-gray-800" numberOfLines={1}>
-                  {item.properties.full_address || item.properties.name}
+                  {item.properties.name}
                 </Text>
+                {item.properties.full_address && item.properties.full_address !== item.properties.name && (
+                  <Text className="text-xs text-gray-500" numberOfLines={1}>
+                    {item.properties.full_address}
+                  </Text>
+                )}
               </TouchableOpacity>
             )}
             keyboardShouldPersistTaps="handled"

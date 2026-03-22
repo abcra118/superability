@@ -22,11 +22,13 @@ export const HomeScreen = () => {
     
     setIsSearching(true);
     try {
-      const { originStopId, destStopId } = await LocationService.resolveJourneyEndpoints(origin, destination);
+      const { originStopId, destStopId, originWalkMins, destWalkMins } = await LocationService.resolveJourneyEndpoints(origin, destination);
       
       navigation.navigate("Results", {
         originStopId,
         destStopId,
+        originWalkMins,
+        destWalkMins,
         time: journeyTime.toISOString(),
         isArrival
       });
